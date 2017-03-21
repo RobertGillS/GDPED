@@ -1,0 +1,139 @@
+---
+title: "Income and GDP"
+author: "Robert Gill"
+date: "March 21, 2017"
+output: 
+    html_document: default
+    keep_md: yes    
+    toc: yes    
+    self_contained: no    
+    smart: false
+---
+
+#Introduction
+  This is an attempt at analyzing the relationship between a Countries GDP and the Income group that it falls under. This is done using raw data taken from online sources. The data is cleaned and presented in a readable manner so that analysis can done. In addition, this makefile (in the form of an RMarkdown file) serves as an example of how to conduct research in a reproducible manner. 
+  
+##Packages needed for the analysis
+```{r,warning=FALSE}
+##install.packages("downloader)
+##install.packages("readr")
+##install.packages("stringr")
+##install.packages("ggplot2")
+library(ggplot2)
+library(downloader)
+library(readr)
+library(stringr)
+```
+It should be noted that the install functions are commented out. These packages were alerady installed on the local machine at the time the research was conducted.
+
+##Import the data
+```{r}
+download("https://d396qusza40orc.cloudfront.net/getdata%2Fdata%2FGDP.csv", destfile="GDP.csv")
+download("https://d396qusza40orc.cloudfront.net/getdata%2Fdata%2FEDSTATS_Country.csv", destfile="EduData.csv")
+```
+
+## Clean GDP data
+Below, we clean the raw GDP data. We focus on attaining the Country Code, GDP Rank, Country Name, and GDP variables. Everything else that is present in the raw data file is trimmed away. It should be noted that the Raw data file provides an index at the end that matches country codes to country names.
+```{r}
+GDP <- read.csv("GDP.csv", header=FALSE, skip = 5, stringsAsFactors = FALSE)
+##trim unwanted NA variables
+vars <- c("V1","V2","V4","V5")
+GDP2 <- GDP[vars]
+colnames(GDP2) <- c("Country Code", "GDP Rank", "Country Name", "GDP")
+##remove data that was read even though it is just a glossary of country names and codes
+GDP2 <- GDP2[1:190,]
+##convert GDP to numeric
+GDP2$GDP <- as.numeric(gsub(",","",GDP2$GDP))
+```
+
+Next, we clean the Educational data. Below, we focus on the Country Code (This will be used later to merge the datasets), Country Name (this variable could be droped as it becomes redundant between the two sets but is kept in this case for a consistancy check), and Income Group(This variable is the most important from this set as it will be used for the analysis). Like before, all other text is trimmed from the data.
+```{r}
+##Clean Edu data
+Edu <- read.csv("EduData.csv", header=TRUE, stringsAsFactors = FALSE)
+##remove unwanted variables
+vars2 <- c("CountryCode","Long.Name","Income.Group")
+Edu2 <- Edu[vars2]
+colnames(Edu2) <- c("Country Code", "Country Name", "Income Group")
+```
+Next is a critical step in the data anaysis. The two datasets must be merged. As stated previously, they will be merged by matching the Country Code variable between them.
+```{r}
+##Merge data sets
+CleanGDPEdu <- merge(GDP2,Edu2, by="Country Code")
+```
+The number of matching Country Codes important. This lets the investigators know how many objects were trimmed from the raw data. An example of objects that were trimmed are those that belonged to a region or group of countries rather than a single country. 
+```{r}
+##count number of matching Country Codes
+length(intersect(GDP2$`Country Code`,Edu2$`Country Code`))
+```
+
+As a constancy check, we can sort the data check that the the highest ranking GDP, which in this case is USA, is remains in the dataset.
+```{r}
+##sort by GDP
+SortedClean <- CleanGDPEdu[order(CleanGDPEdu$GDP),]
+```
+It would be cumbersome to print out all of the data. So, instead, we can pick a random object, in this case we chose lucky number 13, and look at the format of the data. 
+```{r}
+##Retrieve the 13th country in sorted Data
+SortedClean[13,"Country Name.x"]
+```
+Above, we can see that the data is formated cleanly and in a structured manner. The data is now ready for some analysis work.
+#Analysis
+One statistic that we are interested in is the average GDP rank by income group. This is done using the code below.In order to do this, we first had to ensure that the GDP Rank varaible is recognized as a numeric value. 
+```{r}
+##calculatre mean GDP Rank based on Income Group
+SortedClean$`GDP Rank` <- as.numeric(SortedClean$`GDP Rank`)
+aggregate(SortedClean$`GDP Rank`,list(SortedClean$`Income Group`),mean)
+```
+An interesting insight that is important to notice is the difference between the mean GDP ranks of High income: nonOECD and High income: OECD. For those who do not know what OECD is, here is an exerpt from their website: https://usoecd.usmission.gov/mission/overview.html 
+"The Organization for Economic Cooperation and Development (OECD) is a unique forum where the governments of 34 democracies with market economies work with each other, as well as with more than 70 non-member economies to promote economic growth, prosperity, and sustainable development."
+Knowing this, the difference in mean rank could be evidence of the effectiveness of the OECD
+
+However, tables are not enough to analyze data. Plots are useful as well. One such plot would the distribution of Country GDP. This is accomplished with the following code.
+```{r,message=FALSE,warning=FALSE}
+##Plot GDP by Income Group
+ DistPlot <- ggplot(data=SortedClean, aes(SortedClean$GDP)) + geom_histogram() + aes(fill=SortedClean$`Income Group`,bins=50)+geom_vline(aes(xintercept=mean(SortedClean$GDP)), color="red", linetype="dashed", size=1)
+print(DistPlot)
+```
+As we can see from the above distribution plot. The data is far from normally distributed. The importsant statistic to draw from this distribution plot is the observation that the overwhelming majority of countries have a GDP below the mean GDP.
+
+Next, we look at a broader range of statistics. By investigating the spread of GDP by Income group, we continue to notice the correlation between the two internaitonal statistics. 
+```{r}
+##summary statistics
+aggregate(SortedClean$GDP ,list(SortedClean$`Income Group`),summary)
+```
+
+We can tell by looking at the individual quantiles above that there is a distince correlation between the two groups. This is better represented using box plots as shown below.
+```{r}
+SortedClean$`Income Group` <- factor(SortedClean$`Income Group`,c("Low income", "Lower middle income","Upper middle income", "High income: nonOECD", "High income: OECD"))
+DisBox <- ggplot(SortedClean, aes(SortedClean$`Income Group`, SortedClean$GDP)) + 
+  geom_boxplot()
+print(DisBox)
+```
+This trend in the data could possible be imporved by removing extreme values from the dataset like the USA whose value far exceeds that of other countries.
+
+It is important to not only investigate the overall trends in data, but to also investigate points of data that might be identified as exceeding the expectation. One such example is illustated by countries who are lower middle income but among the top quintile of countries GDP. These countries are highlighted below.
+```{r}
+##Split into quintiles
+SortedClean$Quantile[SortedClean$`GDP Rank` <= 38] <- 1
+SortedClean$Quantile[SortedClean$`GDP Rank` > 38 & SortedClean$`GDP Rank` <= 76] <- 2
+SortedClean$Quantile[SortedClean$`GDP Rank` > 76 & SortedClean$`GDP Rank` <= 114] <- 3
+SortedClean$Quantile[SortedClean$`GDP Rank` > 114 & SortedClean$`GDP Rank` <= 152] <- 4
+SortedClean$Quantile[SortedClean$`GDP Rank` > 152 & SortedClean$`GDP Rank` <= 190] <- 5
+
+##create a table showing relationship between quantile and income
+table(SortedClean$Quantile,SortedClean$`Income Group`)
+```
+
+From the table we can see that there are 5 such countries that are in the lower middle income and yet are in the top 38 GDP countries. We also have the ability to identify these countries using the following code.
+
+```{r}
+
+Abnorm<-SortedClean[SortedClean$Quantile == 1 & SortedClean$`Income Group`== c("Lower middle income"),]
+print(Abnorm)
+
+```
+
+Here, we can see that those countries are Egypt, Thailand, Indonesia, India, and China.
+
+#Conclusion
+We have demonstrated that there is a correlation between GDP and a country's income group. Thi correlation is not very strong due to outliers that have strong sway on the statistical data. One such example is the US. The non-normal distribution of GDP was shown, recognizing that the vast majority of countries fall below the global median. It was also demonstrated that there are countries that refute the trends that we observed and serve as further evidence that these trends are week. 
